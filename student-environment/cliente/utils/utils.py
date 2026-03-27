@@ -39,8 +39,9 @@ def unpack_data(pkg: bytes):
     1. O payload começa após o header IP (20 bytes) e o header UDP (8 bytes).
     2. Retorne apenas os bytes correspondentes aos dados.
     """
-    unpack_data = struct.unpack(pkg[28:], pkg)
-    return unpack_data
+    if len(pkg) > 28:
+        return pkg[28:]
+    return b''
 
 def calculate_checksum(msg: bytes) -> int:
     """
@@ -52,9 +53,18 @@ def calculate_checksum(msg: bytes) -> int:
     3. Realize o 'carry' (soma os bits que excederem 16 bits de volta ao total).
     4. Retorne o complemento de um da soma final, mascarado para 16 bits (0xffff).
     """
-    pass
+    if len(msg) % 2 == 1:
+        msg += b'\x00'
+    
+    checksum = 0
+    for i in range(0, len(msg), 2):
+        word = (msg[i] << 8) + msg[i + 1]
+        checksum += word
+    while checksum >> 16:
+        checksum = (checksum & 0xFFFF) + (checksum >> 16)
+    return ~checksum & 0xFFFF
 
-def build_udp_packet(src_ip: str, dest_ip: str, src_port: int, dest_port: int, data: str) -> bytes:
+def build_udp_packet(src_ip: str, dest_ip: str, src_port: int, dest_port: int, data) -> bytes:
     """
     Constrói um pacote IP/UDP completo do zero.
 
@@ -68,4 +78,17 @@ def build_udp_packet(src_ip: str, dest_ip: str, src_port: int, dest_port: int, d
         - Calcular o Checksum do Header IP.
     6. Concatenar Header IP + Header UDP + Payload e retornar os bytes.
     """
-    pass
+    
+    if isinstance(data, str):
+        data_bytes = data.encode('utf-8')
+    else:
+        data_bytes = data
+    
+    pseudo_header = struct.pack('!4s4sBBH', socket.inet_aton(src_ip), socket.inet_aton(dest_ip), 0, 17, len(data_bytes) + 8)
+    udp_header = struct.pack(UDP_FORMAT, src_port, dest_port, len(data_bytes) + 8, 0)
+    checksum = calculate_checksum(pseudo_header + udp_header + data_bytes)
+    udp_header = struct.pack(UDP_FORMAT, src_port, dest_port, len(data_bytes) + 8, checksum)
+    ip_header = struct.pack(IP_FORMAT, 0x45, 0, 20 + 8 + len(data_bytes), 0, 0, 64, 17, 0, socket.inet_aton(src_ip), socket.inet_aton(dest_ip))
+    ip_checksum = calculate_checksum(ip_header)
+    ip_header = struct.pack(IP_FORMAT, 0x45, 0, 20 + 8 + len(data_bytes), 0, 0, 64, 17, ip_checksum, socket.inet_aton(src_ip), socket.inet_aton(dest_ip))
+    return ip_header + udp_header + data_bytes

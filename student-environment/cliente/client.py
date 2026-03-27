@@ -59,21 +59,21 @@ def start_client():
 
                 # 2. Extrair o Header IP usando unpack_iph()
                 # 3. Validar se o protocolo no Header IP é UDP (17)
+                header_ip = unpack_iph(raw_packet)
+                if header_ip[6] != 17:  # Índice 6: protocolo
+                    continue
 
                 # 4. Extrair o Header UDP usando unpack_udp()
                 # 5. Validar se a porta de destino (Dest Port) é a REC_PORT do cliente
+                header_udp = unpack_udp(raw_packet)
+                if header_udp[1] != REC_PORT:  # Índice 1: dest_port
+                    continue
 
                 # 6. Extrair os dados usando unpack_data()
-
-                # Exemplo de lógica esperada dentro deste loop:
-                # iph = unpack_iph(raw_packet)
-                # if iph_valido and protocolo_udp:
-                #     udph = unpack_udp(raw_packet)
-                #     if porta_correta:
-                #         data = unpack_data(raw_packet)
-                #         print(f'> Server response: {data.decode("utf-8")}')
-                #         break 
-                pass 
+                extract_data = unpack_data(raw_packet)
+                if extract_data:
+                    print(f'> Resposta do Servidor: {extract_data.decode("utf-8", errors="ignore")}')
+                break
 
     except KeyboardInterrupt:
         print("\n[!] Encerrando cliente...")

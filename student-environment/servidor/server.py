@@ -1,19 +1,23 @@
 import socket
+import time
 from rich import print
+from utils import build_udp_packet, unpack_iph, unpack_udp, unpack_data
 
 def send_catalog(sender, src_ip: str, src_port: int, client_ip: str, client_port: int):
     """
     Envia uma mensagem de catálogo para o cliente.
-
-    Instruções:
-    1. Defina a mensagem de resposta (ex: "Catálogo: video1, video2").
-    2. Utilize a função build_udp_packet para montar o pacote completo.
-    3. Envie o pacote usando o socket 'sender'.
     """
-    msg = "Catálogo: [Ainda não disponível - Implemente no servidor]"
-
-    # TAREFA: Chamar build_udp_packet e sender.sendto()
-    pass
+    msg = "Catálogo: video1.mp4, video2.mp4, video3.mp4"
+    
+    try:
+        # Converter para bytes se necessário
+        if isinstance(msg, str):
+            msg = msg.encode()
+        
+        udp_packet = build_udp_packet(src_ip, client_ip, src_port, client_port, msg)
+        sender.sendto(udp_packet, (client_ip, client_port))
+    except Exception as e:
+        print(f"[!] Erro ao enviar catálogo: {e}")
 
 def start_server(interface, src_ip, buffer_size, src_port, dst_port):
     """
@@ -34,42 +38,67 @@ def start_server(interface, src_ip, buffer_size, src_port, dst_port):
             # Recebe o pacote bruto da rede
             raw_packet, _ = sniffer.recvfrom(buffer_size)
 
-            # --- TAREFA: PROCESSAMENTO DO CABEÇALHO IP ---
-            # 1. Chamar unpack_iph(raw_packet)
-            # 2. Validar se o protocolo é UDP (valor 17)
+            # Processar cabeçalho IP
+            ip_header = unpack_iph(raw_packet)
+            if not ip_header or ip_header[6] != 17:
+                continue
 
-            # Dica: O endereço IP do cliente estará no header IP. 
-            # Use socket.inet_ntoa() para converter os bytes do IP para string.
+            client_ip = socket.inet_ntoa(ip_header[8])
 
-            # --- TAREFA: PROCESSAMENTO DO CABEÇALHO UDP ---
-            # 1. Chamar unpack_udp(raw_packet)
-            # 2. Validar se a porta de destino do pacote é a porta do servidor (src_port)
+            # Processar cabeçalho UDP
+            udp_header = unpack_udp(raw_packet)
+            if udp_header[1] != src_port:
+                continue
 
-            # --- TAREFA: PAYLOAD E LÓGICA ---
-            # 1. Chamar unpack_data(raw_packet)
-            # 2. Se o dado for 'catalog', chamar a função send_catalog()
+            # Extrair dados (uma única vez)
+            packet_data = unpack_data(raw_packet)
+            command = packet_data.decode(errors='ignore').strip()
 
-            # Exemplo de fluxo:
-            # iph = unpack_iph(raw_packet)
-            # if iph and iph[6] == 17:
-            #     udph = unpack_udp(raw_packet)
-            #     if udph[1] == src_port:
-            #         data = unpack_data(raw_packet).decode(errors='ignore')
-            #         client_ip = socket.inet_ntoa(iph[8])
-            #         client_port = udph[0]
-            #         ... lógica de resposta ...
-
-            # --- TAREFA: Streaming ---
-            # 1. Chamar unpack_data(raw_packet)
-            # 2. Se o dado for 'stream nome_video', chamar a função start_streaming()
-
-            pass
+            # Processar comandos
+            if command == 'catalog':
+                send_catalog(sender, src_ip, src_port, client_ip, udp_header[0])
+                print(f"[+] Enviado catálogo para {client_ip}:{udp_header[0]}")
+            
+            elif command.startswith('stream'):
+                video_name = command[7:].strip()  # Remove 'stream ' e espaços
+                print(f"[+] Pedido de streaming para: {video_name}")
+                start_streaming(sender, src_ip, src_port, client_ip, udp_header[0], video_name)
 
     except KeyboardInterrupt:
         print("\n[!] Desligando servidor...")
     finally:
         sender.close()
         sniffer.close()
+
+def start_streaming(sender, src_ip, src_port, client_ip, client_port, video_name):
+    """
+    Função para iniciar o streaming de um vídeo para o cliente.
+    """
+    print(f"[+] Iniciando streaming do vídeo '{video_name}' para {client_ip}:{client_port}")
+    
+    try:
+        with open(f"videos/{video_name}", "rb") as video_file:
+            chunk_size = 1400
+            
+            while True:
+                chunk = video_file.read(chunk_size)
+                
+                if not chunk:
+                    print(f"[+] Streaming do vídeo '{video_name}' finalizado")
+                    break
+                
+                udp_packet = build_udp_packet(src_ip, client_ip, src_port, client_port, chunk)
+                sender.sendto(udp_packet, (client_ip, client_port))
+                time.sleep(0.1)
+                
+    except FileNotFoundError:
+        error_msg = f"Erro: Vídeo '{video_name}' não encontrado".encode()
+        print(f"[!] Vídeo não encontrado: {video_name}")
+        udp_packet = build_udp_packet(src_ip, client_ip, src_port, client_port, error_msg)
+        sender.sendto(udp_packet, (client_ip, client_port))
+    except Exception as e:
+        print(f"[!] Erro ao fazer streaming: {e}")
+    
 
 if __name__ == "__main__":
     # Parâmetros: interface, ip_do_servidor, buffer, porta_servidor, porta_cliente
