@@ -7,7 +7,7 @@ def send_catalog(sender, src_ip: str, src_port: int, client_ip: str, client_port
     """
     Envia uma mensagem de catálogo para o cliente.
     """
-    msg = "Catálogo: video1.mp4, video2.mp4, video3.mp4"
+    msg = "Catálogo: Efeito_Cheerios.ts"
     
     try:
         # Converter para bytes se necessário
@@ -15,7 +15,7 @@ def send_catalog(sender, src_ip: str, src_port: int, client_ip: str, client_port
             msg = msg.encode()
         
         udp_packet = build_udp_packet(src_ip, client_ip, src_port, client_port, msg)
-        sender.sendto(udp_packet, (client_ip, client_port))
+        sender.sendto(udp_packet, (client_ip, 0))
     except Exception as e:
         print(f"[!] Erro ao enviar catálogo: {e}")
 
@@ -78,28 +78,36 @@ def start_streaming(sender, src_ip, src_port, client_ip, client_port, video_name
     
     try:
         with open(f"videos/{video_name}", "rb") as video_file:
-            chunk_size = 1400
+            chunk_size = 512
             
             while True:
                 chunk = video_file.read(chunk_size)
                 
                 if not chunk:
                     print(f"[+] Streaming do vídeo '{video_name}' finalizado")
+                    # Envia marcador de fim de stream
+                    end_marker = b"__STREAM_END__"
+                    udp_packet = build_udp_packet(src_ip, client_ip, src_port, client_port, end_marker)
+                    sender.sendto(udp_packet, (client_ip, 0))
                     break
                 
                 udp_packet = build_udp_packet(src_ip, client_ip, src_port, client_port, chunk)
-                sender.sendto(udp_packet, (client_ip, client_port))
+                sender.sendto(udp_packet, (client_ip, 0))
                 time.sleep(0.1)
                 
     except FileNotFoundError:
         error_msg = f"Erro: Vídeo '{video_name}' não encontrado".encode()
         print(f"[!] Vídeo não encontrado: {video_name}")
         udp_packet = build_udp_packet(src_ip, client_ip, src_port, client_port, error_msg)
-        sender.sendto(udp_packet, (client_ip, client_port))
+        sender.sendto(udp_packet, (client_ip, 0))
+        # Envia também o marcador de fim para sinalizar término
+        end_marker = b"__STREAM_END__"
+        udp_packet = build_udp_packet(src_ip, client_ip, src_port, client_port, end_marker)
+        sender.sendto(udp_packet, (client_ip, 0))
     except Exception as e:
         print(f"[!] Erro ao fazer streaming: {e}")
     
 
 if __name__ == "__main__":
     # Parâmetros: interface, ip_do_servidor, buffer, porta_servidor, porta_cliente
-    start_server("eth0", "10.0.1.2", 65535, 9999, 12345)
+    start_server("eth0", "172.20.0.2", 65535, 9999, 12345)

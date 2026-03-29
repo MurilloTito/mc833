@@ -1,4 +1,6 @@
+import os
 import socket
+import subprocess
 from rich import print
 from rich.markdown import Markdown
 from utils import unpack_iph, unpack_udp, unpack_data, build_udp_packet
@@ -21,7 +23,7 @@ def start_client():
     sniffer = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
     sniffer.bind(("eth0", 0))
 
-    dest_ip = "10.0.1.2" # IP do Servidor
+    dest_ip = "172.20.0.2" # IP do Servidor
 
     print(Markdown("""# Aplicação de Streaming (Client-Side)
     - Digite **catalog** para listar vídeos.
@@ -38,7 +40,7 @@ def start_client():
             # --- TAREFA: CONSTRUÇÃO ---
             # Você deve usar sua implementação de build_udp_packet aqui
             packet = build_udp_packet(
-                src_ip="10.0.2.2", 
+                src_ip="172.21.0.2", 
                 dest_ip=dest_ip,
                 src_port=REC_PORT,
                 dest_port=9999,
@@ -47,33 +49,89 @@ def start_client():
 
             sender.sendto(packet, (dest_ip, 0))
             print("[-] Pacote enviado. Aguardando resposta do servidor...")
-
             # --- TAREFA: FILTRAGEM E UNPACK ---
-            while True:
-                # Captura o pacote bruto da rede
-                raw_packet, _ = sniffer.recvfrom(65535)
+            # Se for pedido de stream, vamos salvar em arquivo e tocar
+            if msg.startswith('stream '):
+                video_name = msg.split(' ', 1)[1].strip()
+                os.makedirs('downloads', exist_ok=True)
+                out_path = os.path.join('downloads', video_name)
+                with open(out_path, 'wb') as out_file:
+                    print(f"[-] Recebendo stream para {out_path} ...")
+                    recv_count = 0
+                    while True:
+                        raw_packet, _ = sniffer.recvfrom(65535)
 
-                # 1. Verificar se o pacote tem o tamanho mínimo (IP + UDP = 28 bytes)
-                if len(raw_packet) < 28: 
-                    continue
+                        if len(raw_packet) < 28:
+                            continue
 
-                # 2. Extrair o Header IP usando unpack_iph()
-                # 3. Validar se o protocolo no Header IP é UDP (17)
-                header_ip = unpack_iph(raw_packet)
-                if header_ip[6] != 17:  # Índice 6: protocolo
-                    continue
+                        header_ip = unpack_iph(raw_packet)
+                        if header_ip[6] != 17:
+                            continue
 
-                # 4. Extrair o Header UDP usando unpack_udp()
-                # 5. Validar se a porta de destino (Dest Port) é a REC_PORT do cliente
-                header_udp = unpack_udp(raw_packet)
-                if header_udp[1] != REC_PORT:  # Índice 1: dest_port
-                    continue
+                        header_udp = unpack_udp(raw_packet)
+                        if header_udp[1] != REC_PORT:
+                            continue
 
-                # 6. Extrair os dados usando unpack_data()
-                extract_data = unpack_data(raw_packet)
-                if extract_data:
-                    print(f'> Resposta do Servidor: {extract_data.decode("utf-8", errors="ignore")}')
-                break
+                        data = unpack_data(raw_packet)
+                        if not data:
+                            continue
+
+                        recv_count += 1
+                        if recv_count % 10 == 0:
+                            print(f"[<] Recebidos {recv_count} pacotes (último {len(data)} bytes)")
+
+                        # Checa marcador de fim
+                        if data == b'__STREAM_END__':
+                            print('[+] Stream finalizado pelo servidor')
+                            break
+
+                        # Checa mensagem de erro do servidor
+                        if data.startswith(b'Erro:'):
+                            print('> Resposta do Servidor: ' + data.decode('utf-8', errors='ignore'))
+                            break
+
+                        out_file.write(data)
+                        out_file.flush()
+
+                # Tocar o arquivo com mpv (se disponível)
+                try:
+                    print(f"[-] Tocando {out_path} com mpv...")
+                    subprocess.run(['mpv', '--no-terminal', out_path])
+                except FileNotFoundError:
+                    print('[!] mpv não encontrado no container. Arquivo salvo em downloads/')
+
+            else:
+                # Receptor padrão: espera uma única resposta curta (catalog, erro, etc.)
+                while True:
+                    raw_packet, _ = sniffer.recvfrom(65535)
+
+                    if len(raw_packet) < 28:
+                        continue
+
+                    header_ip = unpack_iph(raw_packet)
+
+                    flags_offset = header_ip[4]
+
+                    # Ignora fragmentos
+                    if flags_offset & 0x1FFF != 0:
+                        continue
+                    
+                    if header_ip[6] != 17:
+                        continue
+
+                    header_udp = unpack_udp(raw_packet)
+                    src_ip = socket.inet_ntoa(header_ip[8])
+
+                    if src_ip != dest_ip:
+                        continue
+
+                    if header_udp[1] != REC_PORT:
+                        continue
+
+                    extract_data = unpack_data(raw_packet)
+                    if extract_data:
+                        print(f'> Resposta do Servidor: {extract_data.decode("utf-8", errors="ignore")}')
+                    break
 
     except KeyboardInterrupt:
         print("\n[!] Encerrando cliente...")
