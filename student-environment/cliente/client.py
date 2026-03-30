@@ -92,13 +92,10 @@ def start_client():
 
                         out_file.write(data)
                         out_file.flush()
-
-                # Tocar o arquivo com mpv (se disponível)
-                try:
-                    print(f"[-] Tocando {out_path} com mpv...")
-                    subprocess.run(['mpv', '--no-terminal', out_path])
-                except FileNotFoundError:
-                    print('[!] mpv não encontrado no container. Arquivo salvo em downloads/')
+                        
+                print(f"[+] Stream finalizado.")
+                print(f"[+] Vídeo salvo em: {out_path}")
+                print("[+] Copie o arquivo para o host e rode com mpv localmente.")
 
             else:
                 # Receptor padrão: espera uma única resposta curta (catalog, erro, etc.)
@@ -115,7 +112,7 @@ def start_client():
                     # Ignora fragmentos
                     if flags_offset & 0x1FFF != 0:
                         continue
-                    
+
                     if header_ip[6] != 17:
                         continue
 
