@@ -7,7 +7,7 @@ def send_catalog(sender, src_ip: str, src_port: int, client_ip: str, client_port
     """
     Envia uma mensagem de catálogo para o cliente.
     """
-    msg = "Catálogo: big_buck_bunny.ts, moon_video.ts, speach_video.ts"
+    msg = "Catálogo: big_buck_bunny.ts, moon_video.ts, speech_video.ts"
     
     try:
         # Converter para bytes se necessário
