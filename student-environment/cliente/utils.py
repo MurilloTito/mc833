@@ -16,7 +16,6 @@ def unpack_iph(pkg: bytes):
     2. O header IP começa no índice 0 e vai até o 20.
     3. Retorne a tupla com os campos desempacotados.
     """
-    # Detecta se o pacote inclui um cabeçalho Ethernet (EtherType 0x0800)
     offset = 14 if len(pkg) >= 34 and pkg[12:14] == b'\x08\x00' else 0
     return struct.unpack(IP_FORMAT, pkg[offset:offset+20])
 

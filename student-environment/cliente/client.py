@@ -13,17 +13,13 @@ def start_client():
     Inicia o cliente de streaming utilizando Raw Sockets.
     Você deve garantir que as funções de unpack e build_packet estejam prontas.
     """
-
-    # Socket para ENVIAR pacotes (Nível IP bruto)
     sender = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
     sender.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
 
-    # Socket para SNIFFING (Capturar pacotes que chegam na interface)
-    # Nota: "eth0" deve ser alterado conforme a interface da máquina
     sniffer = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
     sniffer.bind(("eth0", 0))
 
-    dest_ip = "172.20.0.2" # IP do Servidor
+    dest_ip = "172.20.0.2" # IP do Servidor alterado para bater com o do Dockerfile
 
     print(Markdown("""# Aplicação de Streaming (Client-Side)
     - Digite **catalog** para listar vídeos.
@@ -37,8 +33,6 @@ def start_client():
             msg = input("\nVocê (Cliente) > ")
             if msg == 'q': break
 
-            # --- TAREFA: CONSTRUÇÃO ---
-            # Você deve usar sua implementação de build_udp_packet aqui
             packet = build_udp_packet(
                 src_ip="172.21.0.2", 
                 dest_ip=dest_ip,
@@ -49,8 +43,6 @@ def start_client():
 
             sender.sendto(packet, (dest_ip, 0))
             print("[-] Pacote enviado. Aguardando resposta do servidor...")
-            # --- TAREFA: FILTRAGEM E UNPACK ---
-            # Se for pedido de stream, vamos salvar em arquivo e tocar
             if msg.startswith('stream '):
                 video_name = msg.split(' ', 1)[1].strip()
                 os.makedirs('downloads', exist_ok=True)
@@ -80,12 +72,10 @@ def start_client():
                         if recv_count % 10 == 0:
                             print(f"[<] Recebidos {recv_count} pacotes (último {len(data)} bytes)")
 
-                        # Checa marcador de fim
                         if data == b'__STREAM_END__':
                             print('[+] Stream finalizado pelo servidor')
                             break
 
-                        # Checa mensagem de erro do servidor
                         if data.startswith(b'Erro:'):
                             print('> Resposta do Servidor: ' + data.decode('utf-8', errors='ignore'))
                             break
@@ -98,7 +88,6 @@ def start_client():
                 print("[+] Copie o arquivo para o host e rode com mpv localmente.")
 
             else:
-                # Receptor padrão: espera uma única resposta curta (catalog, erro, etc.)
                 while True:
                     raw_packet, _ = sniffer.recvfrom(65535)
 
@@ -109,7 +98,6 @@ def start_client():
 
                     flags_offset = header_ip[4]
 
-                    # Ignora fragmentos
                     if flags_offset & 0x1FFF != 0:
                         continue
 
@@ -137,6 +125,4 @@ def start_client():
         sniffer.close()
 
 if __name__ == "__main__":
-    # Certifique-se de que build_udp_packet e as funções de unpack 
-    # estejam no mesmo arquivo ou importadas.
     start_client()
