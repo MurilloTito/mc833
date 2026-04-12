@@ -7,7 +7,7 @@ services:
       - NET_ADMIN
       - NET_RAW
     sysctls:
-      - net.ipv4.ip_forward=1 # Ativa o encaminhamento de pacotes. Ou seja se chegar um pacote que não é pra esse container docker ele redireciona.
+      - net.ipv4.ip_forward=0 # Ativa o encaminhamento de pacotes. Ou seja se chegar um pacote que não é pra esse container docker ele redireciona.
     networks:
       rede_a:
         ipv4_address: 10.0.1.254

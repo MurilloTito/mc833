@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Instala as bibliotecas Python para o gerador de tráfego e sniffer
-RUN pip3 install scapy requests mysql-connector-python 
+RUN python3 -m pip install numpy rich scapy requests mysql-connector-python
 
 # Configuração prévia do banco de dados e usuário telnet (apenas para o lab)
 RUN service mysql start && \
