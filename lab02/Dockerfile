@@ -13,6 +13,5 @@ RUN apt-get update && apt-get install -y \
 RUN python3 -m pip install numpy rich scapy requests mysql-connector-python
 
 # Configuração prévia do banco de dados e usuário telnet (apenas para o lab)
-RUN service mysql start && \
-    mysql -e "CREATE USER 'aluno'@'%' IDENTIFIED BY 'lab123'; GRANT ALL PRIVILEGES ON *.* TO 'aluno'@'%'; FLUSH PRIVILEGES;" && \
-    useradd -m -s /bin/bash aluno && echo "aluno:senha123" | chpasswd
+RUN useradd -m -s /bin/bash aluno && \
+    echo "aluno:senha123" | chpasswd

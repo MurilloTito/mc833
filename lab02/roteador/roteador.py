@@ -51,9 +51,20 @@ def forward_packet(pkt):
     elif pkt.haslayer('UDP'):
         del pkt['UDP'].chksum
 
+    have_payload = pkt.haslayer("Raw")
+    print(f"Pacote {'com' if have_payload else 'sem'} payload: {pkt.summary()}")
+    if have_payload:
+        print(pkt.summary())
+
+    
+
     # 6. ENVIAR VIA CAMADA 2
-    print(f"Encaminhando {pkt[IP].src} -> {pkt[IP].dst} via {out_iface}")
-    sendp(pkt, iface=out_iface, verbose=False)
+    if pkt[IP].ttl > 0:
+        print(f"Encaminhando {pkt[IP].src} -> {pkt[IP].dst} via {out_iface}")
+        sendp(pkt, iface=out_iface, verbose=False)
+    else:
+        print("Pacote malicioso, DROPANDO...")
+        return
 
 print("Roteador Scapy Ativo (L2 Mode)...")
 sniff(iface=[IFACE_A, IFACE_B], prn=forward_packet, store=0)
