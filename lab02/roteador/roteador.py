@@ -1,4 +1,4 @@
-from scapy.all import IP, Ether, sniff, sendp, get_if_hwaddr, getmacbyip
+from scapy.all import IP, Ether, sniff, sendp, get_if_hwaddr, getmacbyip, TCP, UDP
 
 IFACE_A = "eth0" # Rede A
 IFACE_B = "eth1" # Rede B
@@ -14,57 +14,72 @@ def forward_packet(pkt):
     if not pkt.haslayer(IP) or not pkt.haslayer(Ether):
         return
 
-    # 2. Evitar loops (não processar o que o próprio roteador enviou)
+    # 2. Evitar loops
     if pkt[Ether].src in [MAC_A, MAC_B]:
         return
 
-    # 3. Determinar interface de saída e MAC de origem
+    # 3. Determinar interface de saída
     dst_ip = pkt[IP].dst
+
     if dst_ip.startswith("10.0.1."):
         out_iface = IFACE_A
         mac_origem = MAC_A
+
     elif dst_ip.startswith("10.0.2."):
         out_iface = IFACE_B
         mac_origem = MAC_B
+
     else:
         return
 
-    # 4. Descobrir MAC de destino (quem deve receber o pacote na ponta final)
     mac_destino = cache_mac.get(dst_ip) or getmacbyip(dst_ip)
+
     if not mac_destino:
         return
+
     cache_mac[dst_ip] = mac_destino
 
-    # 5. PREPARAÇÃO DO PACOTE PARA REENVIO
-    # Alteramos o cabeçalho Ethernet (L2) para o próximo salto
+    if pkt.haslayer(TCP):
+
+        flags = str(pkt[TCP].flags)
+
+        if flags in ['', 'F', 'FPU']:
+            print(
+                f"[DROP] TCP {pkt[IP].src} -> {pkt[IP].dst} "
+                f"Flags maliciosas detectadas: {flags}"
+            )
+            return
+
+        else:
+            print(
+                f"[OK] TCP {pkt[IP].src} -> {pkt[IP].dst} "
+                f"Flags: {flags}"
+            )
+
     pkt[Ether].src = mac_origem
     pkt[Ether].dst = mac_destino
-    
-    # Alteramos o IP (L3)
+
     pkt[IP].ttl -= 1
-    
-    # FORÇAR RECALCULO DE CHECKSUM (Crucial para MariaDB/Telnet)
-    # Deletamos os campos antigos; o Scapy calcula os novos no sendp()
+
     del pkt[IP].chksum
-    if pkt.haslayer('TCP'):
-        del pkt['TCP'].chksum
-    elif pkt.haslayer('UDP'):
-        del pkt['UDP'].chksum
 
-    have_payload = pkt.haslayer("Raw")
-    print(f"Pacote {'com' if have_payload else 'sem'} payload: {pkt.summary()}")
-    if have_payload:
-        print(pkt.summary())
+    if pkt.haslayer(TCP):
+        del pkt[TCP].chksum
 
-    
+    elif pkt.haslayer(UDP):
+        del pkt[UDP].chksum
 
-    # 6. ENVIAR VIA CAMADA 2
-    if pkt[IP].ttl > 0:
-        print(f"Encaminhando {pkt[IP].src} -> {pkt[IP].dst} via {out_iface}")
-        sendp(pkt, iface=out_iface, verbose=False)
-    else:
-        print("Pacote malicioso, DROPANDO...")
-        return
+    print(
+        f"Encaminhando {pkt[IP].src} -> {pkt[IP].dst} via {out_iface}"
+    )
+
+    sendp(pkt, iface=out_iface, verbose=False)
+
 
 print("Roteador Scapy Ativo (L2 Mode)...")
-sniff(iface=[IFACE_A, IFACE_B], prn=forward_packet, store=0)
+
+sniff(
+    iface=[IFACE_A, IFACE_B],
+    prn=forward_packet,
+    store=0
+)
